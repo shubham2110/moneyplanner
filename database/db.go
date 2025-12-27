@@ -1,12 +1,10 @@
 package database
 
 import (
-	"bufio"
 	"fmt"
 	"log"
 	"moneyplanner/models"
 	"os"
-	"strings"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -14,59 +12,42 @@ import (
 
 var DB *gorm.DB
 
-// InitDB initializes the database connection and handles migrations intelligently
+// InitOptions holds options for database initialization
+type InitOptions struct {
+	ForceMigrate bool
+	DBPath       string
+}
+
+// InitDB initializes the database connection (does NOT run migrations)
 func InitDB(dbPath string) error {
 	var err error
 
-	// Check if database file exists
-	dbExists := fileExists(dbPath)
-
-	// Connect to SQLite database (creates file if doesn't exist)
 	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	if !dbExists {
-		// New database - run migrations automatically
-		log.Println("Creating new database...")
-		err = MigrateDB()
-		if err != nil {
-			return fmt.Errorf("migration failed: %w", err)
-		}
-		log.Println("✓ Database created with all tables")
-		return nil
-	}
-
-	// Existing database - check if migrations are needed
-	if isMigrationNeeded() {
-		log.Println("⚠️  Pending migrations detected")
-		if promptForMigration() {
-			log.Println("Running migrations...")
-			err = MigrateDB()
-			if err != nil {
-				return fmt.Errorf("migration failed: %w", err)
-			}
-			log.Println("✓ Migrations completed successfully")
-		} else {
-			log.Println("Migrations skipped by user")
-		}
-	} else {
-		log.Println("✓ Database schema is up to date")
-	}
-
+	log.Println("Database connection established")
 	return nil
 }
 
-// fileExists checks if a file exists
-func fileExists(filePath string) bool {
-	_, err := os.Stat(filePath)
-	return err == nil
+// IsNewDatabase checks if database file exists and has no tables
+func IsNewDatabase(dbPath string) bool {
+	// First check if file exists
+	_, err := os.Stat(dbPath)
+	if err != nil {
+		// File doesn't exist, it's new
+		return true
+	}
+
+	// File exists, check if any tables exist by looking for a key table
+	// If wallet_groups table doesn't exist, we consider it a new database
+	return !DB.Migrator().HasTable("wallet_groups")
 }
 
-// isMigrationNeeded checks if there are any pending migrations by comparing ORM models with database schema
-func isMigrationNeeded() bool {
-	models := []interface{}{
+// IsMigrationNeeded checks if there are pending migrations
+func IsMigrationNeeded() bool {
+	modelsToCheck := []interface{}{
 		&models.User{},
 		&models.Person{},
 		&models.Wallet{},
@@ -75,55 +56,28 @@ func isMigrationNeeded() bool {
 		&models.Transaction{},
 	}
 
-	for _, model := range models {
-		// Check if table exists
+	for _, model := range modelsToCheck {
 		if !DB.Migrator().HasTable(model) {
 			return true
 		}
 
-		// Check if all columns defined in the model exist in the database
-		if !DB.Migrator().HasColumn(model, "id") && !allColumnsExist(model) {
-			return true
+		// Check if all columns exist
+		stmt := &gorm.Statement{DB: DB}
+		stmt.Parse(model)
+
+		for _, field := range stmt.Schema.Fields {
+			if field.FieldType.Kind() == 4 { // Skip pointers
+				continue
+			}
+
+			if !DB.Migrator().HasColumn(model, field.DBName) {
+				log.Printf("Missing column: %s.%s", stmt.Schema.Table, field.DBName)
+				return true
+			}
 		}
 	}
 
 	return false
-}
-
-// allColumnsExist checks if all columns from the model exist in the database
-func allColumnsExist(model interface{}) bool {
-	// Get all fields from the model
-	stmt := &gorm.Statement{DB: DB}
-	stmt.Parse(model)
-
-	for _, field := range stmt.Schema.Fields {
-		// Skip primary key and associations for simplicity
-		if field.PrimaryKey || field.FieldType.Kind() == 4 { // 4 is pointer kind
-			continue
-		}
-
-		if !DB.Migrator().HasColumn(model, field.DBName) {
-			log.Printf("Missing column: %s.%s", stmt.Schema.Table, field.DBName)
-			return false
-		}
-	}
-
-	return true
-}
-
-// promptForMigration asks the user if they want to run migrations
-func promptForMigration() bool {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Do you want to run pending migrations? (yes/no): ")
-	
-	response, err := reader.ReadString('\n')
-	if err != nil {
-		log.Println("Error reading input, migrations skipped")
-		return false
-	}
-
-	response = strings.TrimSpace(strings.ToLower(response))
-	return response == "yes" || response == "y"
 }
 
 // MigrateDB runs all migrations
