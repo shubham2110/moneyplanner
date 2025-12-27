@@ -1,0 +1,60 @@
+# Check if Server is Initiatated
+Invoke-RestMethod -Uri "http://localhost:8080/api/initdone"
+
+# Init the Database
+
+$body = @{
+     force_migrate = $true
+     default_wallet_name = "My Wallet"
+     admin_username = "admin1"
+     admin_password = "pass123"
+     admin_email = "admin1@example.com"
+     admin_name = "Administrator"
+ } | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8080/api/init" `
+   -Method Post `
+   -Headers @{"Content-Type"="application/json"} `
+   -Body $body
+
+
+# Create User
+
+$uri = "http://localhost:8080/api/users"
+
+$body = @{
+     username           = "johndoe1"
+     name               = "John Doe"
+     email              = "john.doe1@example.com"
+     password           = "StrongPassword123!"
+     user_type          = "regular"       # must match models.UserType
+     wallet_name        = "Main Wallet"
+     wallet_group_name  = "Personal"
+     create_categories  = $true
+ } | ConvertTo-Json -Depth 3
+
+Invoke-RestMethod `
+     -Uri $uri `
+     -Method Post `
+     -Headers @{
+         "Content-Type" = "application/json"
+     } `
+    -Body $body
+
+# Get List of users
+
+Invoke-RestMethod -Uri http://localhost:8080/api/users
+
+# Modify a User
+
+$uri = "http://localhost:8080/api/users/5"
+$body = @{
+     username = "new_username"
+ } | ConvertTo-Json
+
+Invoke-RestMethod `
+     -Uri $uri `
+     -Method Put `
+     -ContentType "application/json" `
+     -Body $body
+
