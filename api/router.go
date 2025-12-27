@@ -14,6 +14,9 @@ func RegisterRoutes(mux *http.ServeMux) {
 
 	// Init API endpoint
 	mux.HandleFunc("/api/init", handleInit)
+	
+	// Init Done API endpoint (GET)
+	mux.HandleFunc("/api/initdone", handleInitDone)
 
 	log.Println("✓ API routes registered")
 }
@@ -46,5 +49,22 @@ func handleInit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(resp)
+}
+
+// handleInitDone handles initialization status check
+func handleInitDone(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Only allow GET requests
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Call status check
+	resp := initAPI.CheckInitStatus("moneyplanner.db")
+
+	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(resp)
 }

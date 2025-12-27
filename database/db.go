@@ -40,9 +40,19 @@ func IsNewDatabase(dbPath string) bool {
 		return true
 	}
 
+	if DB != nil {
+		return !DB.Migrator().HasTable("wallet_groups")
+	}
+	
+	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		return true
+	}
+
+	return !DB.Migrator().HasTable("wallet_groups")
 	// File exists, check if any tables exist by looking for a key table
 	// If wallet_groups table doesn't exist, we consider it a new database
-	return !DB.Migrator().HasTable("wallet_groups")
+	
 }
 
 // IsMigrationNeeded checks if there are pending migrations and returns list of missing items

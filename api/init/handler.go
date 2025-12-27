@@ -27,6 +27,15 @@ type InitResponse struct {
 	MissingItems    []string    `json:"missing_items,omitempty"` // List of missing tables/columns
 }
 
+// InitDoneResponse represents the response for initialization status check
+type InitDoneResponse struct {
+	Success   bool   `json:"success"`
+	Message   string `json:"message"`
+	InitDone  bool   `json:"init_done"`
+	IsNewDB   bool   `json:"is_new_db"`
+	Error     string `json:"error,omitempty"`
+}
+
 // InitedData contains the created default entities
 type InitedData struct {
 	DatabaseIsNew      bool                `json:"database_is_new"`
@@ -294,5 +303,18 @@ func InitializeDatabase(req *InitRequest, dbPath string) *InitResponse {
 		Success: true,
 		Message: "Database initialized successfully",
 		Data:    initedData,
+	}
+}
+
+// CheckInitStatus checks if database initialization is complete
+func CheckInitStatus(dbPath string) *InitDoneResponse {
+	
+	isNew := database.IsNewDatabase(dbPath)
+
+	return &InitDoneResponse{
+		Success:  true,
+		Message:  "Initialization status retrieved",
+		InitDone: !isNew,  // true if database is NOT new (i.e., initialized)
+		IsNewDB:  isNew,   // true if database is new
 	}
 }
