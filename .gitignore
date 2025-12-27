@@ -1,0 +1,39 @@
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.mdb
+
+# Go
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Go build cache
+.cache/
+*.o
+*.a
+
+# Go modules
+go.sum
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local

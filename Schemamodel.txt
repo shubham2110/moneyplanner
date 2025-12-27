@@ -1,0 +1,60 @@
+okay.. use whatever you find best and create the Classes with sqlite database with following details
+
+Catagory
+1. CategoryID
+2. icom
+3. Name
+4. ParentID ( Nullable) foregien key
+5. Rootid ( not nullable)
+6. WalletID
+7. IsGLobal
+
+Transaction
+1.Transaction ID
+2. CatoryID foregien key
+3. Amount
+4. Note (nullable)
+5. Person ( nullable)
+6. WalletID
+7. TransactionDateTime
+8. EntryDateTime
+9. LastModifiedTime
+10. UserID
+
+User
+1. UserID
+2. username
+3. Name
+4. Email
+5. Password
+6. Type ( HUman, Bot)
+7. DefaultWalletID
+
+Person
+1. PersonID
+2. PersonName
+3. Alias
+
+Wallet
+1. WalletID
+2. Name
+3. Icon
+4. isenabled
+5. Balance
+6. LastModifiedTIme
+
+WalletGroup
+1. WalletGroupID
+2. WalletGroupName
+
+
+WalletWalletGroup
+1. WalletID
+2. WalletGroupID
+
+UserWallet
+1. UserID
+2. WalletID
+
+
+Make in golang
