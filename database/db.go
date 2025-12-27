@@ -45,8 +45,8 @@ func IsNewDatabase(dbPath string) bool {
 	return !DB.Migrator().HasTable("wallet_groups")
 }
 
-// IsMigrationNeeded checks if there are pending migrations
-func IsMigrationNeeded() bool {
+// IsMigrationNeeded checks if there are pending migrations and returns list of missing items
+func IsMigrationNeeded() (needed bool, missingItems []string) {
 	modelsToCheck := []interface{}{
 		&models.User{},
 		&models.Person{},
@@ -58,26 +58,40 @@ func IsMigrationNeeded() bool {
 
 	for _, model := range modelsToCheck {
 		if !DB.Migrator().HasTable(model) {
-			return true
+			stmt := &gorm.Statement{DB: DB}
+			stmt.Parse(model)
+			missingItems = append(missingItems, "table: "+stmt.Schema.Table)
+			needed = true
+			continue
 		}
 
-		// Check if all columns exist
+		// Get all columns that the model expects
 		stmt := &gorm.Statement{DB: DB}
 		stmt.Parse(model)
 
+		// Get actual database columns
+		columnTypes, _ := DB.Migrator().ColumnTypes(model)
+		actualColumnsMap := make(map[string]bool)
+		for _, col := range columnTypes {
+			actualColumnsMap[col.Name()] = true
+		}
+
 		for _, field := range stmt.Schema.Fields {
-			if field.FieldType.Kind() == 4 { // Skip pointers
+			// Skip fields without database column names
+			if field.DBName == "" || field.DBName == "-" {
 				continue
 			}
 
-			if !DB.Migrator().HasColumn(model, field.DBName) {
-				log.Printf("Missing column: %s.%s", stmt.Schema.Table, field.DBName)
-				return true
+			// Check if column exists in database
+			if !actualColumnsMap[field.DBName] {
+				missingItems = append(missingItems, "column: "+stmt.Schema.Table+"."+field.DBName)
+				needed = true
+				log.Printf("Migration needed: Missing column %s.%s (field: %s)", stmt.Schema.Table, field.DBName, field.Name)
 			}
 		}
 	}
 
-	return false
+	return needed, missingItems
 }
 
 // MigrateDB runs all migrations

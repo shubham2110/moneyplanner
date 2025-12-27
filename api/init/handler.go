@@ -20,10 +20,11 @@ type InitRequest struct {
 
 // InitResponse represents the API response
 type InitResponse struct {
-	Success bool        `json:"success"`
-	Message string      `json:"message"`
-	Data    *InitedData `json:"data,omitempty"`
-	Error   string      `json:"error,omitempty"`
+	Success         bool        `json:"success"`
+	Message         string      `json:"message"`
+	Data            *InitedData `json:"data,omitempty"`
+	Error           string      `json:"error,omitempty"`
+	MissingItems    []string    `json:"missing_items,omitempty"` // List of missing tables/columns
 }
 
 // InitedData contains the created default entities
@@ -56,15 +57,16 @@ func InitializeDatabase(req *InitRequest, dbPath string) *InitResponse {
 
 	// Handle existing database
 	if !isNewDB {
-		migrationNeeded := database.IsMigrationNeeded()
+		migrationNeeded, missingItems := database.IsMigrationNeeded()
 		initedData.MigrationRequired = migrationNeeded
 
 		if migrationNeeded && !req.ForceMigrate {
 			return &InitResponse{
-				Success: false,
-				Message: "Database schema does not match ORM models",
-				Error:   "Pending migrations detected. Set force_migrate: true to proceed",
-				Data:    initedData,
+				Success:      false,
+				Message:      "Database schema does not match ORM models",
+				Error:        "Pending migrations detected. Set force_migrate: true to proceed",
+				Data:         initedData,
+				MissingItems: missingItems,
 			}
 		}
 
@@ -253,6 +255,38 @@ func InitializeDatabase(req *InitRequest, dbPath string) *InitResponse {
 			log.Printf("Warning: Failed to create %s subcategory: %v", catName, err)
 		} else {
 			log.Printf("✓ %s subcategory created", catName)
+		}
+	}
+
+	// Create dummy transactions (amount 0) for all categories to satisfy foreign key constraints
+	log.Println("Creating dummy transactions for categories...")
+	allCategories := []uint{
+		incomeCategory.CategoryID,
+		expenseCategory.CategoryID,
+	}
+
+	// Get all subcategories
+	var subcategories []models.Category
+	database.DB.Where("parent_id IS NOT NULL").Find(&subcategories)
+	for _, subcat := range subcategories {
+		allCategories = append(allCategories, subcat.CategoryID)
+	}
+
+	// Create dummy transaction for each category
+	for _, categoryID := range allCategories {
+		dummyTxn := &models.Transaction{
+			CategoryID:       categoryID,
+			Amount:           0,
+			WalletID:         wallet.WalletID,
+			UserID:           adminUser.UserID,
+			TransactionTime:  time.Now(),
+			EntryTime:        time.Now(),
+			LastModifiedTime: time.Now(),
+		}
+		if err := database.DB.Create(dummyTxn).Error; err != nil {
+			log.Printf("Warning: Failed to create dummy transaction for category %d: %v", categoryID, err)
+		} else {
+			log.Printf("✓ Dummy transaction created for category %d", categoryID)
 		}
 	}
 
