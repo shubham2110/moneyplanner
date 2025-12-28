@@ -11,6 +11,11 @@ import (
 	usersAPI "moneyplanner/api/users"
 	walletAPI "moneyplanner/api/wallet"
 	userWalletAPI "moneyplanner/api/userwallet"
+	
+	walletGroupAPI "moneyplanner/api/walletgroup"
+	walletGroupWalletAPI "moneyplanner/api/walletgroupwallet"
+	userWalletGroupAPI "moneyplanner/api/userwalletgroup"
+
 
 )
 
@@ -31,6 +36,11 @@ func RegisterRoutes(mux *http.ServeMux) {
 	// Wallet CRUD API endpoints
 	mux.HandleFunc("/api/wallets", handleWallets)
 	mux.HandleFunc("/api/wallets/", handleWalletDetail)
+
+	// WalletGroup CRUD
+	mux.HandleFunc("/api/walletgroups", handleWalletGroups)
+	mux.HandleFunc("/api/walletgroups/", handleWalletGroupDetail)
+
 
 	log.Println("✓ API routes registered")
 }
@@ -170,6 +180,7 @@ func handleUserDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+
 	// Subroute: /api/users/{id}/wallets ...
 	if len(parts) >= 5 && parts[4] == "wallets" {
 		// /api/users/{id}/wallets
@@ -207,6 +218,17 @@ func handleUserDetail(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	// Subroute: /api/users/{id}/walletgroups
+	if len(parts) >= 5 && parts[4] == "walletgroups" {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		handleUserWalletGroupList(w, r, uint(userID))
+		return
+	}
+
 
 	switch r.Method {
 	case http.MethodGet:
@@ -485,5 +507,219 @@ func handleUserWalletReplace(w http.ResponseWriter, r *http.Request, userID uint
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "User wallets replaced successfully",
+	})
+}
+
+func handleWalletGroups(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case http.MethodPost:
+		handleWalletGroupCreate(w, r)
+	case http.MethodGet:
+		handleWalletGroupList(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func handleWalletGroupCreate(w http.ResponseWriter, r *http.Request) {
+	var req walletGroupAPI.WalletGroupCreationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	wg, err := walletGroupAPI.CreateWalletGroup(&req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Wallet group created successfully",
+		"data":    wg,
+	})
+}
+
+func handleWalletGroupList(w http.ResponseWriter, r *http.Request) {
+	groups, err := walletGroupAPI.ListAllWalletGroups()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Wallet groups retrieved successfully",
+		"data":    groups,
+	})
+}
+
+
+func handleWalletGroupDetail(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, "Invalid URL path", http.StatusBadRequest)
+		return
+	}
+
+	groupIDStr := parts[3]
+	groupID64, err := strconv.ParseUint(groupIDStr, 10, 32)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid wallet group ID: " + err.Error()})
+		return
+	}
+	groupID := uint(groupID64)
+
+	// Subroute: /api/walletgroups/{id}/wallets...
+	if len(parts) >= 5 && parts[4] == "wallets" {
+		// /api/walletgroups/{id}/wallets
+		if len(parts) == 5 || parts[5] == "" {
+			switch r.Method {
+			case http.MethodGet:
+				handleWalletGroupWalletList(w, r, groupID)
+			case http.MethodPut:
+				handleWalletGroupWalletReplace(w, r, groupID)
+			default:
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+			return
+		}
+
+		// /api/walletgroups/{id}/wallets/{walletId}
+		walletIDStr := parts[5]
+		walletID64, err := strconv.ParseUint(walletIDStr, 10, 32)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid wallet ID: " + err.Error()})
+			return
+		}
+		walletID := uint(walletID64)
+
+		switch r.Method {
+		case http.MethodPost:
+			handleWalletGroupWalletAttach(w, r, groupID, walletID)
+		case http.MethodDelete:
+			handleWalletGroupWalletDetach(w, r, groupID, walletID)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+		return
+	}
+
+	// /api/walletgroups/{id}
+	switch r.Method {
+	case http.MethodGet:
+		wg, err := walletGroupAPI.GetWalletGroupByID(groupID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "Wallet group retrieved successfully", "data": wg})
+
+	case http.MethodPut:
+		var req walletGroupAPI.WalletGroupUpdateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body: " + err.Error()})
+			return
+		}
+		wg, err := walletGroupAPI.UpdateWalletGroup(groupID, &req)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "Wallet group updated successfully", "data": wg})
+
+	case http.MethodDelete:
+		if err := walletGroupAPI.DeleteWalletGroup(groupID); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "Wallet group deleted successfully"})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func handleWalletGroupWalletAttach(w http.ResponseWriter, r *http.Request, groupID, walletID uint) {
+	if err := walletGroupWalletAPI.AttachWalletToGroup(groupID, walletID); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "Wallet attached to wallet group"})
+}
+
+func handleWalletGroupWalletDetach(w http.ResponseWriter, r *http.Request, groupID, walletID uint) {
+	if err := walletGroupWalletAPI.DetachWalletFromGroup(groupID, walletID); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "Wallet detached from wallet group"})
+}
+
+func handleWalletGroupWalletList(w http.ResponseWriter, r *http.Request, groupID uint) {
+	wallets, err := walletGroupWalletAPI.ListWalletsInGroup(groupID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "Wallets in group retrieved successfully", "data": wallets})
+}
+
+func handleWalletGroupWalletReplace(w http.ResponseWriter, r *http.Request, groupID uint) {
+	var req walletGroupWalletAPI.ReplaceWalletsInGroupRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	if err := walletGroupWalletAPI.ReplaceWalletsInGroup(groupID, req.WalletIDs); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "Wallet group wallets replaced successfully"})
+}
+
+func handleUserWalletGroupList(w http.ResponseWriter, r *http.Request, userID uint) {
+	groups, err := userWalletGroupAPI.ListWalletGroupsForUser(userID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "User wallet groups retrieved successfully",
+		"data":    groups,
 	})
 }

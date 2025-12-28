@@ -101,3 +101,70 @@ Invoke-RestMethod `
     "balance": 2500
   }'
 
+
+# Create walletgroup
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/walletgroups" `
+  -Method POST `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{
+    "wallet_group_name": "Family Expenses"
+  }'
+
+# List all wallet group
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/walletgroups" `
+  -Method GET
+
+
+# Get wallet group by ID 
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/walletgroups/1" `
+  -Method GET
+
+# Update Wallet Group Name
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/walletgroups/1" `
+  -Method PUT `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{
+    "wallet_group_name": "Updated Family Group"
+  }'
+
+# Delete wallet group
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/walletgroups/1" `
+  -Method DELETE
+
+# Attach Wallet to Wallet Group
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/walletgroups/1/wallets/2" `
+  -Method POST
+
+# Detach Wallet from Wallet Group
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/walletgroups/1/wallets/2" `
+  -Method DELETE
+
+# List Wallets in a Wallet Group
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/walletgroups/1/wallets" `
+  -Method GET
+
+# Replace Wallets in a Wallet Group (attach multiple at once)
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/walletgroups/1/wallets" `
+  -Method PUT `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{
+    "wallet_ids": [1, 2, 3]
+  }'
+
+# List Wallet Groups for a User (via ORM preload)
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/users/1/walletgroups" `
+  -Method GET
+
