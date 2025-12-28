@@ -2,9 +2,9 @@ package init
 
 import (
 	"log"
+	"moneyplanner/api/users"
 	"moneyplanner/database"
 	"moneyplanner/models"
-	"time"
 )
 
 // InitRequest represents the initialization request payload
@@ -140,164 +140,30 @@ func InitializeDatabase(req *InitRequest, dbPath string) *InitResponse {
 		adminName = req.AdminName
 	}
 
-	// Create default wallet group
-	walletGroup := &models.WalletGroup{
-		WalletGroupName: walletGroupName,
+	// Create admin user with default wallet, wallet group, and categories
+	adminUserReq := &users.UserCreationRequest{
+		Username:         adminUsername,
+		Name:             adminName,
+		Email:            adminEmail,
+		Password:         adminPassword,
+		UserType:         models.UserTypeHuman,
+		WalletName:       walletName,
+		WalletGroupName:  walletGroupName,
+		CreateCategories: true,
 	}
-	if err := database.DB.Create(walletGroup).Error; err != nil {
+
+	setupResult, err := users.SetupUserWithDefaults(adminUserReq)
+	if err != nil {
 		return &InitResponse{
 			Success: false,
-			Error:   "Failed to create wallet group: " + err.Error(),
-		}
-	}
-	log.Println("✓ Default wallet group created")
-	initedData.DefaultWalletGroup = walletGroup
-
-	// Create default wallet
-	wallet := &models.Wallet{
-		Name:             walletName,
-		Icon:             "💰",
-		IsEnabled:        true,
-		Balance:          0,
-		LastModifiedTime: time.Now(),
-	}
-	if err := database.DB.Create(wallet).Error; err != nil {
-		return &InitResponse{
-			Success: false,
-			Error:   "Failed to create wallet: " + err.Error(),
-		}
-	}
-	log.Println("✓ Default wallet created")
-	initedData.DefaultWallet = wallet
-
-	// Associate wallet with group
-	database.DB.Model(wallet).Association("WalletGroups").Append(walletGroup)
-
-	// Create default admin user
-	adminUser := &models.User{
-		Username:       adminUsername,
-		Name:           adminName,
-		Email:          adminEmail,
-		Password:       adminPassword,
-		Type:           models.UserTypeHuman,
-		DefaultWalletID: &wallet.WalletID,
-	}
-	if err := database.DB.Create(adminUser).Error; err != nil {
-		return &InitResponse{
-			Success: false,
-			Error:   "Failed to create admin user: " + err.Error(),
-		}
-	}
-	log.Println("✓ Default admin user created")
-	initedData.AdminUser = adminUser
-
-	// Associate user with wallet
-	database.DB.Model(adminUser).Association("Wallets").Append(wallet)
-
-	// Create root categories
-	incomeCategory := &models.Category{
-		Icon:     "💵",
-		Name:     "Income",
-		WalletID: wallet.WalletID,
-		IsGlobal: true,
-		RootID:   0, // Will be set after creation
-	}
-	if err := database.DB.Create(incomeCategory).Error; err != nil {
-		return &InitResponse{
-			Success: false,
-			Error:   "Failed to create Income category: " + err.Error(),
-		}
-	}
-	incomeCategory.RootID = incomeCategory.CategoryID
-	database.DB.Save(incomeCategory)
-	log.Println("✓ Income root category created")
-	initedData.RootCategories = append(initedData.RootCategories, *incomeCategory)
-
-	expenseCategory := &models.Category{
-		Icon:     "💸",
-		Name:     "Expense",
-		WalletID: wallet.WalletID,
-		IsGlobal: true,
-		RootID:   0,
-	}
-	if err := database.DB.Create(expenseCategory).Error; err != nil {
-		return &InitResponse{
-			Success: false,
-			Error:   "Failed to create Expense category: " + err.Error(),
-		}
-	}
-	expenseCategory.RootID = expenseCategory.CategoryID
-	database.DB.Save(expenseCategory)
-	log.Println("✓ Expense root category created")
-	initedData.RootCategories = append(initedData.RootCategories, *expenseCategory)
-
-	// Create income subcategories
-	incomeSubcategories := []string{"Salary", "Refund", "Bonus", "Interest"}
-	for _, catName := range incomeSubcategories {
-		subcat := &models.Category{
-			Name:     catName,
-			Icon:     "📊",
-			ParentID: &incomeCategory.CategoryID,
-			RootID:   incomeCategory.CategoryID,
-			WalletID: wallet.WalletID,
-			IsGlobal: false,
-		}
-		if err := database.DB.Create(subcat).Error; err != nil {
-			log.Printf("Warning: Failed to create %s subcategory: %v", catName, err)
-		} else {
-			log.Printf("✓ %s subcategory created", catName)
+			Error:   "Failed to setup admin user: " + err.Error(),
 		}
 	}
 
-	// Create expense subcategories
-	expenseSubcategories := []string{"Groceries", "House Maintenance", "Investment", "Utilities", "Transport", "Entertainment"}
-	for _, catName := range expenseSubcategories {
-		subcat := &models.Category{
-			Name:     catName,
-			Icon:     "📉",
-			ParentID: &expenseCategory.CategoryID,
-			RootID:   expenseCategory.CategoryID,
-			WalletID: wallet.WalletID,
-			IsGlobal: false,
-		}
-		if err := database.DB.Create(subcat).Error; err != nil {
-			log.Printf("Warning: Failed to create %s subcategory: %v", catName, err)
-		} else {
-			log.Printf("✓ %s subcategory created", catName)
-		}
-	}
-
-	// Create dummy transactions (amount 0) for all categories to satisfy foreign key constraints
-	log.Println("Creating dummy transactions for categories...")
-	allCategories := []uint{
-		incomeCategory.CategoryID,
-		expenseCategory.CategoryID,
-	}
-
-	// Get all subcategories
-	var subcategories []models.Category
-	database.DB.Where("parent_id IS NOT NULL").Find(&subcategories)
-	for _, subcat := range subcategories {
-		allCategories = append(allCategories, subcat.CategoryID)
-	}
-
-	// Create dummy transaction for each category
-	for _, categoryID := range allCategories {
-		dummyTxn := &models.Transaction{
-			CategoryID:       categoryID,
-			Amount:           0,
-			WalletID:         wallet.WalletID,
-			UserID:           adminUser.UserID,
-			TransactionTime:  time.Now(),
-			EntryTime:        time.Now(),
-			LastModifiedTime: time.Now(),
-		}
-		if err := database.DB.Create(dummyTxn).Error; err != nil {
-			log.Printf("Warning: Failed to create dummy transaction for category %d: %v", categoryID, err)
-		} else {
-			log.Printf("✓ Dummy transaction created for category %d", categoryID)
-		}
-	}
+	initedData.AdminUser = setupResult.User
+	initedData.DefaultWallet = setupResult.Wallet
+	initedData.DefaultWalletGroup = setupResult.WalletGroup
+	initedData.RootCategories = setupResult.RootCategories
 
 	return &InitResponse{
 		Success: true,
