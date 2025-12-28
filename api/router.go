@@ -9,6 +9,9 @@ import (
 
 	initAPI "moneyplanner/api/init"
 	usersAPI "moneyplanner/api/users"
+	walletAPI "moneyplanner/api/wallet"
+	userWalletAPI "moneyplanner/api/userwallet"
+
 )
 
 // RegisterRoutes registers all API routes
@@ -24,6 +27,10 @@ func RegisterRoutes(mux *http.ServeMux) {
 	// User CRUD API endpoints
 	mux.HandleFunc("/api/users", handleUsers)
 	mux.HandleFunc("/api/users/", handleUserDetail)
+
+	// Wallet CRUD API endpoints
+	mux.HandleFunc("/api/wallets", handleWallets)
+	mux.HandleFunc("/api/wallets/", handleWalletDetail)
 
 	log.Println("✓ API routes registered")
 }
@@ -142,6 +149,7 @@ func handleUserList(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleUserDetail handles user detail operations (GET, PUT, DELETE /api/users/{id})
+// and subroutes like /api/users/{id}/wallets
 func handleUserDetail(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -159,6 +167,44 @@ func handleUserDetail(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "Invalid user ID: " + err.Error(),
 		})
+		return
+	}
+
+	// Subroute: /api/users/{id}/wallets ...
+	if len(parts) >= 5 && parts[4] == "wallets" {
+		// /api/users/{id}/wallets
+		if len(parts) == 5 || parts[5] == "" {
+			switch r.Method {
+			case http.MethodGet:
+				handleUserWalletList(w, r, uint(userID))
+			case http.MethodPut:
+				handleUserWalletReplace(w, r, uint(userID))
+			default:
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+			return
+		}
+
+		// /api/users/{id}/wallets/{walletId}
+		walletIDStr := parts[5]
+		walletID64, err := strconv.ParseUint(walletIDStr, 10, 32)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Invalid wallet ID: " + err.Error(),
+			})
+			return
+		}
+		walletID := uint(walletID64)
+
+		switch r.Method {
+		case http.MethodPost:
+			handleUserWalletAttach(w, r, uint(userID), walletID)
+		case http.MethodDelete:
+			handleUserWalletDetach(w, r, uint(userID), walletID)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
 		return
 	}
 
@@ -236,5 +282,208 @@ func handleUserDelete(w http.ResponseWriter, r *http.Request, userID uint) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "User deleted successfully",
+	})
+}
+
+// handleWallets handles wallet list and creation (POST /api/wallets)
+func handleWallets(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case http.MethodPost:
+		handleWalletCreate(w, r)
+	case http.MethodGet:
+		handleWalletList(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func handleWalletCreate(w http.ResponseWriter, r *http.Request) {
+	var req walletAPI.WalletCreationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	wallet, err := walletAPI.CreateWallet(&req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Wallet created successfully",
+		"data":    wallet,
+	})
+}
+
+func handleWalletList(w http.ResponseWriter, r *http.Request) {
+	wallets, err := walletAPI.ListAllWallets()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Wallets retrieved successfully",
+		"data":    wallets,
+	})
+}
+
+// handleWalletDetail handles wallet detail operations (GET, PUT, DELETE /api/wallets/{id})
+func handleWalletDetail(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, "Invalid URL path", http.StatusBadRequest)
+		return
+	}
+
+	walletIDStr := parts[3]
+	walletID64, err := strconv.ParseUint(walletIDStr, 10, 32)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid wallet ID: " + err.Error()})
+		return
+	}
+	walletID := uint(walletID64)
+
+	switch r.Method {
+	case http.MethodGet:
+		handleWalletGet(w, r, walletID)
+	case http.MethodPut:
+		handleWalletUpdate(w, r, walletID)
+	case http.MethodDelete:
+		handleWalletDelete(w, r, walletID)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func handleWalletGet(w http.ResponseWriter, r *http.Request, walletID uint) {
+	wallet, err := walletAPI.GetWalletByID(walletID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Wallet retrieved successfully",
+		"data":    wallet,
+	})
+}
+
+func handleWalletUpdate(w http.ResponseWriter, r *http.Request, walletID uint) {
+	var req walletAPI.WalletUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	wallet, err := walletAPI.UpdateWallet(walletID, &req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Wallet updated successfully",
+		"data":    wallet,
+	})
+}
+
+func handleWalletDelete(w http.ResponseWriter, r *http.Request, walletID uint) {
+	if err := walletAPI.DeleteWallet(walletID); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Wallet deleted successfully",
+	})
+}
+
+
+func handleUserWalletAttach(w http.ResponseWriter, r *http.Request, userID, walletID uint) {
+	if err := userWalletAPI.AttachWalletToUser(userID, walletID); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Wallet attached to user",
+	})
+}
+
+func handleUserWalletDetach(w http.ResponseWriter, r *http.Request, userID, walletID uint) {
+	if err := userWalletAPI.DetachWalletFromUser(userID, walletID); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Wallet detached from user",
+	})
+}
+
+func handleUserWalletList(w http.ResponseWriter, r *http.Request, userID uint) {
+	wallets, err := userWalletAPI.ListUserWallets(userID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "User wallets retrieved successfully",
+		"data":    wallets,
+	})
+}
+
+func handleUserWalletReplace(w http.ResponseWriter, r *http.Request, userID uint) {
+	var req userWalletAPI.ReplaceWalletsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	if err := userWalletAPI.ReplaceUserWallets(userID, req.WalletIDs); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "User wallets replaced successfully",
 	})
 }

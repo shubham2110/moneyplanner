@@ -58,3 +58,46 @@ Invoke-RestMethod `
      -ContentType "application/json" `
      -Body $body
 
+# Add user to wallet
+
+Invoke-RestMethod -Uri "http://localhost:8080/api/users/1/wallets/2" -Method POST
+
+# Detach user from wallet
+Invoke-RestMethod -Uri "http://localhost:8080/api/users/1/wallets/2" -Method DELETE
+
+# List User1 wallet
+Invoke-RestMethod -Uri "http://localhost:8080/api/users/1/wallets" -Method GET
+
+# Repalce user's wallet
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/users/1/wallets" `
+  -Method PUT `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{ "wallet_ids": [1, 3, 5] }'
+
+# Create New Wallet 
+
+Invoke-RestMethod `
+   -Uri "http://localhost:8080/api/wallets" `
+   -Method POST `
+   -Headers @{ "Content-Type" = "application/json" } `
+   -Body '{
+     "name": "Main Wallet",
+     "icon": "X",
+     "is_enabled": true,
+     "balance": 1000
+   }'
+
+# Update wallet 
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/wallets/1" `
+  -Method PUT `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{
+    "name": "Updated Wallet Name",
+    "icon": "🏦",
+    "is_enabled": true,
+    "balance": 2500
+  }'
+
