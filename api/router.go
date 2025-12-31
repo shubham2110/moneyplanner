@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	initAPI "moneyplanner/api/init"
 	usersAPI "moneyplanner/api/users"
@@ -984,7 +985,8 @@ func handleWalletTransactionCreate(w http.ResponseWriter, r *http.Request, walle
 }
 
 func handleWalletTransactionList(w http.ResponseWriter, r *http.Request, walletID uint) {
-	transactions, err := transactionsAPI.ListTransactionsByWallet(walletID)
+	filter := parseTransactionFilter(r)
+	transactions, err := transactionsAPI.ListTransactionsByWallet(walletID, filter)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -1091,6 +1093,94 @@ func handleWalletTransactionDelete(w http.ResponseWriter, r *http.Request, walle
 		"success": true,
 		"message": "Transaction deleted successfully",
 	})
+}
+
+// parseTransactionFilter parses query parameters into TransactionFilter
+func parseTransactionFilter(r *http.Request) *transactionsAPI.TransactionFilter {
+	filter := &transactionsAPI.TransactionFilter{}
+
+	// Parse dates
+	if start := r.URL.Query().Get("start_transaction_time"); start != "" {
+		if t, err := time.Parse(time.RFC3339, start); err == nil {
+			filter.StartTransactionTime = &t
+		}
+	}
+	if end := r.URL.Query().Get("end_transaction_time"); end != "" {
+		if t, err := time.Parse(time.RFC3339, end); err == nil {
+			filter.EndTransactionTime = &t
+		}
+	}
+	if start := r.URL.Query().Get("start_entry_time"); start != "" {
+		if t, err := time.Parse(time.RFC3339, start); err == nil {
+			filter.StartEntryTime = &t
+		}
+	}
+	if end := r.URL.Query().Get("end_entry_time"); end != "" {
+		if t, err := time.Parse(time.RFC3339, end); err == nil {
+			filter.EndEntryTime = &t
+		}
+	}
+	if start := r.URL.Query().Get("start_last_modified_time"); start != "" {
+		if t, err := time.Parse(time.RFC3339, start); err == nil {
+			filter.StartLastModifiedTime = &t
+		}
+	}
+	if end := r.URL.Query().Get("end_last_modified_time"); end != "" {
+		if t, err := time.Parse(time.RFC3339, end); err == nil {
+			filter.EndLastModifiedTime = &t
+		}
+	}
+
+	// Parse user_id
+	if userIDStr := r.URL.Query().Get("user_id"); userIDStr != "" {
+		if userID, err := strconv.ParseUint(userIDStr, 10, 32); err == nil {
+			u := uint(userID)
+			filter.UserID = &u
+		}
+	}
+
+	// Parse category_ids
+	if categoryIDsStr := r.URL.Query().Get("category_ids"); categoryIDsStr != "" {
+		ids := strings.Split(categoryIDsStr, ",")
+		for _, idStr := range ids {
+			if id, err := strconv.ParseUint(strings.TrimSpace(idStr), 10, 32); err == nil {
+				filter.CategoryIDs = append(filter.CategoryIDs, uint(id))
+			}
+		}
+	}
+
+	// Parse wallet_id
+	if walletIDStr := r.URL.Query().Get("wallet_id"); walletIDStr != "" {
+		if walletID, err := strconv.ParseUint(walletIDStr, 10, 32); err == nil {
+			w := uint(walletID)
+			filter.WalletID = &w
+		}
+	}
+
+	// Parse person_id
+	if personIDStr := r.URL.Query().Get("person_id"); personIDStr != "" {
+		if personID, err := strconv.ParseUint(personIDStr, 10, 32); err == nil {
+			p := uint(personID)
+			filter.PersonID = &p
+		}
+	}
+
+	// Parse fuzzy_note
+	if fuzzyNote := r.URL.Query().Get("fuzzy_note"); fuzzyNote != "" {
+		filter.FuzzyNote = &fuzzyNote
+	}
+
+	// Parse amount
+	if amountOp := r.URL.Query().Get("amount_op"); amountOp != "" {
+		filter.AmountOp = &amountOp
+	}
+	if amountValueStr := r.URL.Query().Get("amount_value"); amountValueStr != "" {
+		if amountValue, err := strconv.ParseFloat(amountValueStr, 64); err == nil {
+			filter.AmountValue = &amountValue
+		}
+	}
+
+	return filter
 }
 
 // handlePersons handles person list and creation (POST /api/persons)
@@ -1295,7 +1385,8 @@ func handleTransactionCreate(w http.ResponseWriter, r *http.Request) {
 
 // handleTransactionList handles GET /api/transactions - List all transactions
 func handleTransactionList(w http.ResponseWriter, r *http.Request) {
-	transactions, err := transactionsAPI.ListAllTransactions()
+	filter := parseTransactionFilter(r)
+	transactions, err := transactionsAPI.ListAllTransactions(filter)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{

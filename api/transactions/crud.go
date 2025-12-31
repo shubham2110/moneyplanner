@@ -38,10 +38,74 @@ func GetTransactionByID(transactionID uint) (*models.Transaction, error) {
 	return &transaction, nil
 }
 
-// ListAllTransactions retrieves all transactions
-func ListAllTransactions() ([]models.Transaction, error) {
+// ListAllTransactions retrieves all transactions with optional filters
+func ListAllTransactions(filter *TransactionFilter) ([]models.Transaction, error) {
 	var transactions []models.Transaction
-	if err := database.DB.Preload("Category.Wallet").Preload("Person").Preload("Wallet").Preload("User").Find(&transactions).Error; err != nil {
+	query := database.DB.Preload("Category.Wallet").Preload("Person").Preload("Wallet").Preload("User")
+
+	// Apply filters
+	if filter != nil {
+		if filter.StartTransactionTime != nil && filter.EndTransactionTime != nil {
+			query = query.Where("transaction_time BETWEEN ? AND ?", *filter.StartTransactionTime, *filter.EndTransactionTime)
+		} else if filter.StartTransactionTime != nil {
+			query = query.Where("transaction_time >= ?", *filter.StartTransactionTime)
+		} else if filter.EndTransactionTime != nil {
+			query = query.Where("transaction_time <= ?", *filter.EndTransactionTime)
+		}
+
+		if filter.StartEntryTime != nil && filter.EndEntryTime != nil {
+			query = query.Where("entry_time BETWEEN ? AND ?", *filter.StartEntryTime, *filter.EndEntryTime)
+		} else if filter.StartEntryTime != nil {
+			query = query.Where("entry_time >= ?", *filter.StartEntryTime)
+		} else if filter.EndEntryTime != nil {
+			query = query.Where("entry_time <= ?", *filter.EndEntryTime)
+		}
+
+		if filter.StartLastModifiedTime != nil && filter.EndLastModifiedTime != nil {
+			query = query.Where("last_modified_time BETWEEN ? AND ?", *filter.StartLastModifiedTime, *filter.EndLastModifiedTime)
+		} else if filter.StartLastModifiedTime != nil {
+			query = query.Where("last_modified_time >= ?", *filter.StartLastModifiedTime)
+		} else if filter.EndLastModifiedTime != nil {
+			query = query.Where("last_modified_time <= ?", *filter.EndLastModifiedTime)
+		}
+
+		if filter.UserID != nil {
+			query = query.Where("user_id = ?", *filter.UserID)
+		}
+
+		if len(filter.CategoryIDs) > 0 {
+			query = query.Where("category_id IN ?", filter.CategoryIDs)
+		}
+
+		if filter.WalletID != nil {
+			query = query.Where("wallet_id = ?", *filter.WalletID)
+		}
+
+		if filter.PersonID != nil {
+			query = query.Where("person_id = ?", *filter.PersonID)
+		}
+
+		if filter.FuzzyNote != nil {
+			query = query.Where("note LIKE ?", "%"+*filter.FuzzyNote+"%")
+		}
+
+		if filter.AmountOp != nil && filter.AmountValue != nil {
+			switch *filter.AmountOp {
+			case "eq":
+				query = query.Where("amount = ?", *filter.AmountValue)
+			case "lt":
+				query = query.Where("amount < ?", *filter.AmountValue)
+			case "le":
+				query = query.Where("amount <= ?", *filter.AmountValue)
+			case "gt":
+				query = query.Where("amount > ?", *filter.AmountValue)
+			case "ge":
+				query = query.Where("amount >= ?", *filter.AmountValue)
+			}
+		}
+	}
+
+	if err := query.Find(&transactions).Error; err != nil {
 		return nil, fmt.Errorf("failed to list transactions: %w", err)
 	}
 	return transactions, nil
@@ -56,10 +120,70 @@ func ListTransactionsByUser(userID uint) ([]models.Transaction, error) {
 	return transactions, nil
 }
 
-// ListTransactionsByWallet retrieves transactions for a wallet
-func ListTransactionsByWallet(walletID uint) ([]models.Transaction, error) {
+// ListTransactionsByWallet retrieves transactions for a wallet with optional additional filters
+func ListTransactionsByWallet(walletID uint, filter *TransactionFilter) ([]models.Transaction, error) {
 	var transactions []models.Transaction
-	if err := database.DB.Preload("Category.Wallet").Preload("Person").Preload("Wallet").Preload("User").Where("wallet_id = ?", walletID).Find(&transactions).Error; err != nil {
+	query := database.DB.Preload("Category.Wallet").Preload("Person").Preload("Wallet").Preload("User").Where("wallet_id = ?", walletID)
+
+	// Apply additional filters
+	if filter != nil {
+		if filter.StartTransactionTime != nil && filter.EndTransactionTime != nil {
+			query = query.Where("transaction_time BETWEEN ? AND ?", *filter.StartTransactionTime, *filter.EndTransactionTime)
+		} else if filter.StartTransactionTime != nil {
+			query = query.Where("transaction_time >= ?", *filter.StartTransactionTime)
+		} else if filter.EndTransactionTime != nil {
+			query = query.Where("transaction_time <= ?", *filter.EndTransactionTime)
+		}
+
+		if filter.StartEntryTime != nil && filter.EndEntryTime != nil {
+			query = query.Where("entry_time BETWEEN ? AND ?", *filter.StartEntryTime, *filter.EndEntryTime)
+		} else if filter.StartEntryTime != nil {
+			query = query.Where("entry_time >= ?", *filter.StartEntryTime)
+		} else if filter.EndEntryTime != nil {
+			query = query.Where("entry_time <= ?", *filter.EndEntryTime)
+		}
+
+		if filter.StartLastModifiedTime != nil && filter.EndLastModifiedTime != nil {
+			query = query.Where("last_modified_time BETWEEN ? AND ?", *filter.StartLastModifiedTime, *filter.EndLastModifiedTime)
+		} else if filter.StartLastModifiedTime != nil {
+			query = query.Where("last_modified_time >= ?", *filter.StartLastModifiedTime)
+		} else if filter.EndLastModifiedTime != nil {
+			query = query.Where("last_modified_time <= ?", *filter.EndLastModifiedTime)
+		}
+
+		if filter.UserID != nil {
+			query = query.Where("user_id = ?", *filter.UserID)
+		}
+
+		if len(filter.CategoryIDs) > 0 {
+			query = query.Where("category_id IN ?", filter.CategoryIDs)
+		}
+
+		if filter.PersonID != nil {
+			query = query.Where("person_id = ?", *filter.PersonID)
+		}
+
+		if filter.FuzzyNote != nil {
+			query = query.Where("note LIKE ?", "%"+*filter.FuzzyNote+"%")
+		}
+
+		if filter.AmountOp != nil && filter.AmountValue != nil {
+			switch *filter.AmountOp {
+			case "eq":
+				query = query.Where("amount = ?", *filter.AmountValue)
+			case "lt":
+				query = query.Where("amount < ?", *filter.AmountValue)
+			case "le":
+				query = query.Where("amount <= ?", *filter.AmountValue)
+			case "gt":
+				query = query.Where("amount > ?", *filter.AmountValue)
+			case "ge":
+				query = query.Where("amount >= ?", *filter.AmountValue)
+			}
+		}
+	}
+
+	if err := query.Find(&transactions).Error; err != nil {
 		return nil, fmt.Errorf("failed to list transactions for wallet: %w", err)
 	}
 	return transactions, nil

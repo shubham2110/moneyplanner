@@ -24,3 +24,19 @@ type TransactionUpdateRequest struct {
 	Note            *string    `json:"note,omitempty"`
 	TransactionTime *time.Time `json:"transaction_time,omitempty"`
 }
+
+type TransactionFilter struct {
+	StartTransactionTime  *time.Time `json:"start_transaction_time,omitempty"`
+	EndTransactionTime    *time.Time `json:"end_transaction_time,omitempty"`
+	StartEntryTime        *time.Time `json:"start_entry_time,omitempty"`
+	EndEntryTime          *time.Time `json:"end_entry_time,omitempty"`
+	StartLastModifiedTime *time.Time `json:"start_last_modified_time,omitempty"`
+	EndLastModifiedTime   *time.Time `json:"end_last_modified_time,omitempty"`
+	UserID                *uint      `json:"user_id,omitempty"`
+	CategoryIDs           []uint     `json:"category_ids,omitempty"`
+	WalletID              *uint      `json:"wallet_id,omitempty"`
+	PersonID              *uint      `json:"person_id,omitempty"`
+	FuzzyNote             *string    `json:"fuzzy_note,omitempty"`
+	AmountOp              *string    `json:"amount_op,omitempty"` // eq, lt, le, gt, ge
+	AmountValue           *float64   `json:"amount_value,omitempty"`
+}

@@ -340,6 +340,18 @@ Invoke-RestMethod `
   -Uri "http://localhost:8080/api/wallets/1/transactions" `
   -Method GET
 
+# List Transactions with Filters (Global)
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/transactions?user_id=1&start_transaction_time=2025-01-01T00:00:00Z&end_transaction_time=2025-12-31T23:59:59Z&category_ids=1,2&amount_op=gt&amount_value=10&fuzzy_note=lunch" `
+  -Method GET
+
+# List Transactions for a Wallet with Filters
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/wallets/1/transactions?user_id=1&start_entry_time=2025-01-01T00:00:00Z&person_id=1&fuzzy_note=expense" `
+  -Method GET
+
 # Get a Specific Transaction for a Wallet
 
 Invoke-RestMethod `
@@ -363,3 +375,5 @@ Invoke-RestMethod `
   -Uri "http://localhost:8080/api/wallets/1/transactions/13" `
   -Method DELETE
 
+-----------
+Detailed API Usage 
