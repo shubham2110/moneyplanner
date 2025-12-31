@@ -168,3 +168,71 @@ Invoke-RestMethod `
   -Uri "http://localhost:8080/api/users/1/walletgroups" `
   -Method GET
 
+# Create a Category for a Wallet
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/wallets/1/categories" `
+  -Method POST `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{
+    "name": "Groceries",
+    "icon": "🛒",
+    "parent_id": null,
+    "is_global": false
+  }'
+
+# Create a Global Category (syncs to all wallets)
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/wallets/1/categories" `
+  -Method POST `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{
+    "name": "Transportation",
+    "icon": "🚗",
+    "parent_id": null,
+    "is_global": true
+  }'
+
+# List Categories for a Wallet (flat list)
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/wallets/1/categories" `
+  -Method GET
+
+# Get Category Tree for a Wallet (hierarchical)
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/wallets/1/categories/tree" `
+  -Method GET
+
+# Get a Specific Category
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/wallets/1/categories/5" `
+  -Method GET
+
+# Update a Category
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/wallets/1/categories/5" `
+  -Method PUT `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{
+    "name": "Updated Groceries",
+    "icon": "🛒",
+    "is_global": true
+  }'
+
+# Delete a Category
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/wallets/1/categories/5" `
+  -Method DELETE
+
+# Sync Global Category to All Wallets
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/wallets/1/categories/5/sync-global" `
+  -Method POST
+

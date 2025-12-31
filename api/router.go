@@ -9,14 +9,13 @@ import (
 
 	initAPI "moneyplanner/api/init"
 	usersAPI "moneyplanner/api/users"
-	walletAPI "moneyplanner/api/wallet"
 	userWalletAPI "moneyplanner/api/userwallet"
-	
+	walletAPI "moneyplanner/api/wallet"
+
+	categoriesAPI "moneyplanner/api/categories"
+	userWalletGroupAPI "moneyplanner/api/userwalletgroup"
 	walletGroupAPI "moneyplanner/api/walletgroup"
 	walletGroupWalletAPI "moneyplanner/api/walletgroupwallet"
-	userWalletGroupAPI "moneyplanner/api/userwalletgroup"
-
-
 )
 
 // RegisterRoutes registers all API routes
@@ -25,7 +24,7 @@ func RegisterRoutes(mux *http.ServeMux) {
 
 	// Init API endpoint
 	mux.HandleFunc("/api/init", handleInit)
-	
+
 	// Init Done API endpoint (GET)
 	mux.HandleFunc("/api/initdone", handleInitDone)
 
@@ -40,7 +39,6 @@ func RegisterRoutes(mux *http.ServeMux) {
 	// WalletGroup CRUD
 	mux.HandleFunc("/api/walletgroups", handleWalletGroups)
 	mux.HandleFunc("/api/walletgroups/", handleWalletGroupDetail)
-
 
 	log.Println("✓ API routes registered")
 }
@@ -180,7 +178,6 @@ func handleUserDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	// Subroute: /api/users/{id}/wallets ...
 	if len(parts) >= 5 && parts[4] == "wallets" {
 		// /api/users/{id}/wallets
@@ -228,7 +225,6 @@ func handleUserDetail(w http.ResponseWriter, r *http.Request) {
 		handleUserWalletGroupList(w, r, uint(userID))
 		return
 	}
-
 
 	switch r.Method {
 	case http.MethodGet:
@@ -379,6 +375,66 @@ func handleWalletDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	walletID := uint(walletID64)
 
+	// Subroute: /api/wallets/{walletId}/categories...
+	if len(parts) >= 5 && parts[4] == "categories" {
+		// /api/wallets/{walletId}/categories
+		if len(parts) == 5 || parts[5] == "" {
+			switch r.Method {
+			case http.MethodGet:
+				handleWalletCategoryList(w, r, walletID)
+			case http.MethodPost:
+				handleWalletCategoryCreate(w, r, walletID)
+			default:
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+			return
+		}
+
+		// /api/wallets/{walletId}/categories/tree
+		if len(parts) == 6 && parts[5] == "tree" && r.Method == http.MethodGet {
+			handleWalletCategoryTree(w, r, walletID)
+			return
+		}
+
+		// /api/wallets/{walletId}/categories/{categoryId}
+		if len(parts) == 6 {
+			categoryIDStr := parts[5]
+			categoryID64, err := strconv.ParseUint(categoryIDStr, 10, 32)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Invalid category ID: " + err.Error()})
+				return
+			}
+			categoryID := uint(categoryID64)
+
+			switch r.Method {
+			case http.MethodGet:
+				handleWalletCategoryGet(w, r, categoryID)
+			case http.MethodPut:
+				handleWalletCategoryUpdate(w, r, categoryID)
+			case http.MethodDelete:
+				handleWalletCategoryDelete(w, r, categoryID)
+			default:
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+			return
+		}
+
+		// /api/wallets/{walletId}/categories/{categoryId}/sync-global
+		if len(parts) == 7 && parts[6] == "sync-global" && r.Method == http.MethodPost {
+			categoryIDStr := parts[5]
+			categoryID64, err := strconv.ParseUint(categoryIDStr, 10, 32)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Invalid category ID: " + err.Error()})
+				return
+			}
+			categoryID := uint(categoryID64)
+			handleWalletCategorySyncGlobal(w, r, categoryID)
+			return
+		}
+	}
+
 	switch r.Method {
 	case http.MethodGet:
 		handleWalletGet(w, r, walletID)
@@ -443,7 +499,6 @@ func handleWalletDelete(w http.ResponseWriter, r *http.Request, walletID uint) {
 		"message": "Wallet deleted successfully",
 	})
 }
-
 
 func handleUserWalletAttach(w http.ResponseWriter, r *http.Request, userID, walletID uint) {
 	if err := userWalletAPI.AttachWalletToUser(userID, walletID); err != nil {
@@ -561,7 +616,6 @@ func handleWalletGroupList(w http.ResponseWriter, r *http.Request) {
 		"data":    groups,
 	})
 }
-
 
 func handleWalletGroupDetail(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -721,5 +775,132 @@ func handleUserWalletGroupList(w http.ResponseWriter, r *http.Request, userID ui
 		"success": true,
 		"message": "User wallet groups retrieved successfully",
 		"data":    groups,
+	})
+}
+
+// Category handlers
+
+func handleWalletCategoryCreate(w http.ResponseWriter, r *http.Request, walletID uint) {
+	var req categoriesAPI.CategoryCreationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	// Set the wallet ID from path
+	req.WalletID = walletID
+
+	category, err := categoriesAPI.CreateCategory(&req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Category created successfully",
+		"data":    category,
+	})
+}
+
+func handleWalletCategoryList(w http.ResponseWriter, r *http.Request, walletID uint) {
+	categories, err := categoriesAPI.ListCategoriesByWallet(walletID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Categories retrieved successfully",
+		"data":    categories,
+	})
+}
+
+func handleWalletCategoryTree(w http.ResponseWriter, r *http.Request, walletID uint) {
+	tree, err := categoriesAPI.GetCategoryTree(walletID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Category tree retrieved successfully",
+		"data":    tree,
+	})
+}
+
+func handleWalletCategoryGet(w http.ResponseWriter, r *http.Request, categoryID uint) {
+	category, err := categoriesAPI.GetCategoryByID(categoryID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Category retrieved successfully",
+		"data":    category,
+	})
+}
+
+func handleWalletCategoryUpdate(w http.ResponseWriter, r *http.Request, categoryID uint) {
+	var req categoriesAPI.CategoryUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	category, err := categoriesAPI.UpdateCategory(categoryID, &req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Category updated successfully",
+		"data":    category,
+	})
+}
+
+func handleWalletCategoryDelete(w http.ResponseWriter, r *http.Request, categoryID uint) {
+	if err := categoriesAPI.DeleteCategory(categoryID); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Category deleted successfully",
+	})
+}
+
+func handleWalletCategorySyncGlobal(w http.ResponseWriter, r *http.Request, categoryID uint) {
+	if err := categoriesAPI.SyncGlobalCategoryToAllWallets(categoryID); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Global category synced to all wallets",
 	})
 }
