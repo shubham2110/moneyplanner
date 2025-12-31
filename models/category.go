@@ -3,16 +3,16 @@ package models
 type Category struct {
 	CategoryID uint   `gorm:"primaryKey" json:"category_id"`
 	Icon       string `json:"icon"`
-	Name       string `json:"name"`
+	Name       string `gorm:"uniqueIndex:idx_category_wallet_name;not null" json:"name"`
 	ParentID   *uint  `json:"parent_id"` // Nullable foreign key to Category
 	RootID     uint   `json:"root_id"`
-	WalletID   uint   `json:"wallet_id"`
+	WalletID   uint   `gorm:"uniqueIndex:idx_category_wallet_name;not null" json:"wallet_id"`
 	IsGlobal   bool   `json:"is_global"`
 
 	// Relationships
-	Parent       *Category      `gorm:"foreignKey:ParentID;references:CategoryID" json:"parent,omitempty"`
-	Transactions []Transaction  `gorm:"foreignKey:CategoryID" json:"transactions,omitempty"`
-	Wallet       Wallet         `gorm:"foreignKey:WalletID" json:"wallet,omitempty"`
+	Parent       *Category     `gorm:"foreignKey:ParentID;references:CategoryID" json:"parent,omitempty"`
+	Transactions []Transaction `gorm:"foreignKey:CategoryID" json:"transactions,omitempty"`
+	Wallet       Wallet        `gorm:"foreignKey:WalletID;references:WalletID" json:"wallet,omitempty"`
 }
 
 func (Category) TableName() string {

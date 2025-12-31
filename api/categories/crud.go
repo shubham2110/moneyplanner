@@ -10,32 +10,54 @@ import (
 // GetCategoryByID retrieves a category by its ID
 func GetCategoryByID(categoryID uint) (*models.Category, error) {
 	var category models.Category
-	if err := database.DB.Preload("Wallet").First(&category, categoryID).Error; err != nil {
+	if err := database.DB.First(&category, categoryID).Error; err != nil {
 		return nil, fmt.Errorf("category not found: %w", err)
 	}
+	// Load wallet
+	var wallet models.Wallet
+	if err := database.DB.First(&wallet, category.WalletID).Error; err != nil {
+		return nil, fmt.Errorf("failed to get wallet: %w", err)
+	}
+	category.Wallet = wallet
 	return &category, nil
 }
 
 // ListCategoriesByWallet retrieves all categories for a wallet (flat list)
 func ListCategoriesByWallet(walletID uint) ([]models.Category, error) {
 	var categories []models.Category
-	if err := database.DB.Where("wallet_id = ?", walletID).Preload("Wallet").Find(&categories).Error; err != nil {
+	if err := database.DB.Where("wallet_id = ?", walletID).Find(&categories).Error; err != nil {
 		return nil, fmt.Errorf("failed to list categories: %w", err)
+	}
+	// Load wallet
+	var wallet models.Wallet
+	if err := database.DB.First(&wallet, walletID).Error; err != nil {
+		return nil, fmt.Errorf("failed to get wallet: %w", err)
+	}
+	// Set wallet in each category
+	for i := range categories {
+		categories[i].Wallet = wallet
 	}
 	return categories, nil
 }
 
 // GetCategoryTree retrieves categories in hierarchical structure for a wallet
 func GetCategoryTree(walletID uint) (*CategoryTreeResponse, error) {
+	// Load wallet
+	var wallet models.Wallet
+	if err := database.DB.First(&wallet, walletID).Error; err != nil {
+		return nil, fmt.Errorf("failed to get wallet: %w", err)
+	}
+
 	// Get root categories (ParentID is NULL)
 	var roots []models.Category
-	if err := database.DB.Where("wallet_id = ? AND parent_id IS NULL", walletID).Preload("Wallet").Find(&roots).Error; err != nil {
+	if err := database.DB.Where("wallet_id = ? AND parent_id IS NULL", walletID).Find(&roots).Error; err != nil {
 		return nil, fmt.Errorf("failed to get root categories: %w", err)
 	}
 
 	var rootWithChildren []CategoryWithChildren
 	for _, root := range roots {
-		children, err := buildChildren(root.CategoryID)
+		root.Wallet = wallet // Set wallet
+		children, err := buildChildren(root.CategoryID, wallet)
 		if err != nil {
 			return nil, err
 		}
@@ -49,15 +71,16 @@ func GetCategoryTree(walletID uint) (*CategoryTreeResponse, error) {
 }
 
 // buildChildren recursively builds the children for a category
-func buildChildren(parentID uint) ([]CategoryWithChildren, error) {
+func buildChildren(parentID uint, wallet models.Wallet) ([]CategoryWithChildren, error) {
 	var children []models.Category
-	if err := database.DB.Where("parent_id = ?", parentID).Preload("Wallet").Find(&children).Error; err != nil {
+	if err := database.DB.Where("parent_id = ?", parentID).Find(&children).Error; err != nil {
 		return nil, fmt.Errorf("failed to get children for category %d: %w", parentID, err)
 	}
 
 	var result []CategoryWithChildren
 	for _, child := range children {
-		grandChildren, err := buildChildren(child.CategoryID)
+		child.Wallet = wallet // Set wallet
+		grandChildren, err := buildChildren(child.CategoryID, wallet)
 		if err != nil {
 			return nil, err
 		}
