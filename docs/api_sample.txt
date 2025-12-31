@@ -236,3 +236,130 @@ Invoke-RestMethod `
   -Uri "http://localhost:8080/api/wallets/1/categories/5/sync-global" `
   -Method POST
 
+# Create a Person
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/persons" `
+  -Method POST `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{
+    "person_name": "John Smith",
+    "alias": "Johnny"
+  }'
+
+# List All Persons
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/persons" `
+  -Method GET
+
+# Get a Specific Person
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/persons/1" `
+  -Method GET
+
+# Update a Person
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/persons/1" `
+  -Method PUT `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{
+    "person_name": "Updated Name",
+    "alias": "Updated Alias"
+  }'
+
+# Delete a Person
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/persons/1" `
+  -Method DELETE
+
+# Create a Transaction
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/transactions" `
+  -Method POST `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{
+    "wallet_id": 1,
+    "category_id": 1,
+    "amount": 50.00,
+    "person_name": "New Person",
+    "note": "Lunch expense",
+    "user_id": 1
+  }'
+
+# List All Transactions
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/transactions" `
+  -Method GET
+
+# Get a Specific Transaction
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/transactions/1" `
+  -Method GET
+
+# Update a Transaction
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/transactions/1" `
+  -Method PUT `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{
+    "amount": 60.00,
+    "note": "Updated note"
+  }'
+
+# Delete a Transaction
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/transactions/1" `
+  -Method DELETE
+
+# Create a Transaction for a Specific Wallet
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/wallets/1/transactions" `
+  -Method POST `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{
+    "category_id": 1,
+    "amount": 50.00,
+    "person_name": "New Person",
+    "note": "Lunch expense",
+    "user_id": 1
+  }'
+
+# List Transactions for a Specific Wallet
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/wallets/1/transactions" `
+  -Method GET
+
+# Get a Specific Transaction for a Wallet
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/wallets/1/transactions/13" `
+  -Method GET
+
+# Update a Transaction for a Wallet
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/wallets/1/transactions/13" `
+  -Method PUT `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{
+    "amount": 60.00,
+    "note": "Updated note"
+  }'
+
+# Delete a Transaction for a Wallet
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8080/api/wallets/1/transactions/13" `
+  -Method DELETE
+

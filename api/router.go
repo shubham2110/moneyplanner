@@ -13,6 +13,8 @@ import (
 	walletAPI "moneyplanner/api/wallet"
 
 	categoriesAPI "moneyplanner/api/categories"
+	personsAPI "moneyplanner/api/persons"
+	transactionsAPI "moneyplanner/api/transactions"
 	userWalletGroupAPI "moneyplanner/api/userwalletgroup"
 	walletGroupAPI "moneyplanner/api/walletgroup"
 	walletGroupWalletAPI "moneyplanner/api/walletgroupwallet"
@@ -39,6 +41,14 @@ func RegisterRoutes(mux *http.ServeMux) {
 	// WalletGroup CRUD
 	mux.HandleFunc("/api/walletgroups", handleWalletGroups)
 	mux.HandleFunc("/api/walletgroups/", handleWalletGroupDetail)
+
+	// Persons CRUD API endpoints
+	mux.HandleFunc("/api/persons", handlePersons)
+	mux.HandleFunc("/api/persons/", handlePersonDetail)
+
+	// Transactions CRUD API endpoints
+	mux.HandleFunc("/api/transactions", handleTransactions)
+	mux.HandleFunc("/api/transactions/", handleTransactionDetail)
 
 	log.Println("✓ API routes registered")
 }
@@ -431,6 +441,46 @@ func handleWalletDetail(w http.ResponseWriter, r *http.Request) {
 			}
 			categoryID := uint(categoryID64)
 			handleWalletCategorySyncGlobal(w, r, categoryID)
+			return
+		}
+	}
+
+	// Subroute: /api/wallets/{walletId}/transactions...
+	if len(parts) >= 5 && parts[4] == "transactions" {
+		// /api/wallets/{walletId}/transactions
+		if len(parts) == 5 || parts[5] == "" {
+			switch r.Method {
+			case http.MethodGet:
+				handleWalletTransactionList(w, r, walletID)
+			case http.MethodPost:
+				handleWalletTransactionCreate(w, r, walletID)
+			default:
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+			return
+		}
+
+		// /api/wallets/{walletId}/transactions/{transactionId}
+		if len(parts) == 6 {
+			transactionIDStr := parts[5]
+			transactionID64, err := strconv.ParseUint(transactionIDStr, 10, 32)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Invalid transaction ID: " + err.Error()})
+				return
+			}
+			transactionID := uint(transactionID64)
+
+			switch r.Method {
+			case http.MethodGet:
+				handleWalletTransactionGet(w, r, walletID, transactionID)
+			case http.MethodPut:
+				handleWalletTransactionUpdate(w, r, walletID, transactionID)
+			case http.MethodDelete:
+				handleWalletTransactionDelete(w, r, walletID, transactionID)
+			default:
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
 			return
 		}
 	}
@@ -902,5 +952,459 @@ func handleWalletCategorySyncGlobal(w http.ResponseWriter, r *http.Request, cate
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "Global category synced to all wallets",
+	})
+}
+
+// Transaction handlers for wallet-specific endpoints
+
+func handleWalletTransactionCreate(w http.ResponseWriter, r *http.Request, walletID uint) {
+	var req transactionsAPI.TransactionCreationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	// Set wallet ID from path
+	req.WalletID = walletID
+
+	transaction, err := transactionsAPI.CreateTransaction(&req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Transaction created successfully",
+		"data":    transaction,
+	})
+}
+
+func handleWalletTransactionList(w http.ResponseWriter, r *http.Request, walletID uint) {
+	transactions, err := transactionsAPI.ListTransactionsByWallet(walletID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Transactions retrieved successfully",
+		"data":    transactions,
+	})
+}
+
+func handleWalletTransactionGet(w http.ResponseWriter, r *http.Request, walletID, transactionID uint) {
+	transaction, err := transactionsAPI.GetTransactionByID(transactionID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Check if transaction belongs to the wallet
+	if transaction.WalletID != walletID {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Transaction not found in this wallet"})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Transaction retrieved successfully",
+		"data":    transaction,
+	})
+}
+
+func handleWalletTransactionUpdate(w http.ResponseWriter, r *http.Request, walletID, transactionID uint) {
+	// First check if transaction exists and belongs to wallet
+	transaction, err := transactionsAPI.GetTransactionByID(transactionID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	if transaction.WalletID != walletID {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Transaction not found in this wallet"})
+		return
+	}
+
+	var req transactionsAPI.TransactionUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	// Prevent changing wallet ID in wallet-specific endpoint
+	if req.WalletID != nil && *req.WalletID != walletID {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Cannot change wallet ID in wallet-specific endpoint"})
+		return
+	}
+
+	transaction, err = transactionsAPI.UpdateTransaction(transactionID, &req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Transaction updated successfully",
+		"data":    transaction,
+	})
+}
+
+func handleWalletTransactionDelete(w http.ResponseWriter, r *http.Request, walletID, transactionID uint) {
+	// First check if transaction exists and belongs to wallet
+	transaction, err := transactionsAPI.GetTransactionByID(transactionID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	if transaction.WalletID != walletID {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Transaction not found in this wallet"})
+		return
+	}
+
+	err = transactionsAPI.DeleteTransaction(transactionID)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Transaction deleted successfully",
+	})
+}
+
+// handlePersons handles person list and creation (POST /api/persons)
+func handlePersons(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case http.MethodPost:
+		handlePersonCreate(w, r)
+	case http.MethodGet:
+		handlePersonList(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handlePersonCreate handles POST /api/persons - Create a new person
+func handlePersonCreate(w http.ResponseWriter, r *http.Request) {
+	var req personsAPI.PersonCreationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Invalid request body: " + err.Error(),
+		})
+		return
+	}
+
+	person, err := personsAPI.CreatePerson(&req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Person created successfully",
+		"data":    person,
+	})
+}
+
+// handlePersonList handles GET /api/persons - List all persons
+func handlePersonList(w http.ResponseWriter, r *http.Request) {
+	persons, err := personsAPI.ListAllPersons()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Persons retrieved successfully",
+		"data":    persons,
+	})
+}
+
+// handlePersonDetail handles person detail operations (GET, PUT, DELETE /api/persons/{id})
+func handlePersonDetail(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, "Invalid URL path", http.StatusBadRequest)
+		return
+	}
+
+	personIDStr := parts[3]
+	personID, err := strconv.ParseUint(personIDStr, 10, 32)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Invalid person ID: " + err.Error(),
+		})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		handlePersonGet(w, r, uint(personID))
+	case http.MethodPut:
+		handlePersonUpdate(w, r, uint(personID))
+	case http.MethodDelete:
+		handlePersonDelete(w, r, uint(personID))
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handlePersonGet handles GET /api/persons/{id} - Get person by ID
+func handlePersonGet(w http.ResponseWriter, r *http.Request, personID uint) {
+	person, err := personsAPI.GetPersonByID(personID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Person retrieved successfully",
+		"data":    person,
+	})
+}
+
+// handlePersonUpdate handles PUT /api/persons/{id} - Update person
+func handlePersonUpdate(w http.ResponseWriter, r *http.Request, personID uint) {
+	var req personsAPI.PersonUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Invalid request body: " + err.Error(),
+		})
+		return
+	}
+
+	person, err := personsAPI.UpdatePerson(personID, &req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Person updated successfully",
+		"data":    person,
+	})
+}
+
+// handlePersonDelete handles DELETE /api/persons/{id} - Delete person
+func handlePersonDelete(w http.ResponseWriter, r *http.Request, personID uint) {
+	err := personsAPI.DeletePerson(personID)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Person deleted successfully",
+	})
+}
+
+// handleTransactions handles transaction list and creation (POST /api/transactions)
+func handleTransactions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case http.MethodPost:
+		handleTransactionCreate(w, r)
+	case http.MethodGet:
+		handleTransactionList(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleTransactionCreate handles POST /api/transactions - Create a new transaction
+func handleTransactionCreate(w http.ResponseWriter, r *http.Request) {
+	var req transactionsAPI.TransactionCreationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Invalid request body: " + err.Error(),
+		})
+		return
+	}
+
+	transaction, err := transactionsAPI.CreateTransaction(&req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Transaction created successfully",
+		"data":    transaction,
+	})
+}
+
+// handleTransactionList handles GET /api/transactions - List all transactions
+func handleTransactionList(w http.ResponseWriter, r *http.Request) {
+	transactions, err := transactionsAPI.ListAllTransactions()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Transactions retrieved successfully",
+		"data":    transactions,
+	})
+}
+
+// handleTransactionDetail handles transaction detail operations (GET, PUT, DELETE /api/transactions/{id})
+func handleTransactionDetail(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, "Invalid URL path", http.StatusBadRequest)
+		return
+	}
+
+	transactionIDStr := parts[3]
+	transactionID, err := strconv.ParseUint(transactionIDStr, 10, 32)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Invalid transaction ID: " + err.Error(),
+		})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		handleTransactionGet(w, r, uint(transactionID))
+	case http.MethodPut:
+		handleTransactionUpdate(w, r, uint(transactionID))
+	case http.MethodDelete:
+		handleTransactionDelete(w, r, uint(transactionID))
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleTransactionGet handles GET /api/transactions/{id} - Get transaction by ID
+func handleTransactionGet(w http.ResponseWriter, r *http.Request, transactionID uint) {
+	transaction, err := transactionsAPI.GetTransactionByID(transactionID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Transaction retrieved successfully",
+		"data":    transaction,
+	})
+}
+
+// handleTransactionUpdate handles PUT /api/transactions/{id} - Update transaction
+func handleTransactionUpdate(w http.ResponseWriter, r *http.Request, transactionID uint) {
+	var req transactionsAPI.TransactionUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Invalid request body: " + err.Error(),
+		})
+		return
+	}
+
+	transaction, err := transactionsAPI.UpdateTransaction(transactionID, &req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Transaction updated successfully",
+		"data":    transaction,
+	})
+}
+
+// handleTransactionDelete handles DELETE /api/transactions/{id} - Delete transaction
+func handleTransactionDelete(w http.ResponseWriter, r *http.Request, transactionID uint) {
+	err := transactionsAPI.DeleteTransaction(transactionID)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Transaction deleted successfully",
 	})
 }
