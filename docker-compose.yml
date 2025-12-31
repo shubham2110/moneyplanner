@@ -4,5 +4,5 @@ services:
   moneyplanner:
     build: .
     ports:
-      - "11080:8080"
+      - "10080:8080"
     restart: unless-stopped
