@@ -1,0 +1,36 @@
+# Sample Responses for Modify a User API
+
+## Success Response (200 OK)
+```json
+{
+  "user_id": 5,
+  "username": "new_username",
+  "name": "John Doe",
+  "email": "john.doe@example.com",
+  "type": "regular",
+  "default_wallet_id": 1
+}
+```
+
+## Failure Response: User Not Found (404 Not Found)
+```json
+{
+  "error": "User not found",
+  "message": "No user exists with the specified ID"
+}
+```
+
+## Failure Response: Username Already Taken (409 Conflict)
+```json
+{
+  "error": "Username already exists",
+  "message": "The username 'new_username' is already taken by another user"
+}
+```
+
+## Failure Response: Invalid Username (400 Bad Request)
+```json
+{
+  "error": "Invalid username",
+  "message": "Username must be between 3-30 characters and contain only alphanumeric characters, underscores, and hyphens"
+}
