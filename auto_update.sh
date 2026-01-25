@@ -1,6 +1,6 @@
 #!/bin/bash
 
-##
+###
 ## crontab -e
 ## */5 * * * * ./auto_update.sh >> /var/log/auto_update.log 2>&1
 
