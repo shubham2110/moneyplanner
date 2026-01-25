@@ -3,7 +3,7 @@
 ###
 ## crontab -e
 ## */5 * * * * ./auto_update.sh >> /var/log/auto_update.log 2>&1
-
+date
 # CONFIG — change these
 REPO_DIR="$(dirname "${BASH_SOURCE[0]}")"
 COMPOSE_FILE="docker-compose.yml"
