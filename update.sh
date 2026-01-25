@@ -12,6 +12,7 @@ BRANCH="master"
 # Ensure script fails on errors
 set -e
 
+
 cd "$REPO_DIR" || exit 1
 
 # Fetch remote changes
